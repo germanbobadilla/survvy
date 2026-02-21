@@ -67,11 +67,38 @@ Educational institutions need a structured way to collect feedback about instruc
 - LTI launch flow: Moodle initiates OIDC login → Survvy validates JWT → resolves tenant → maps LMS user to respondent → loads assigned survey inside Moodle iframe
 - Respondents (students/faculty) never need a Survvy account — they are identified by LTI claims
 
-### 4.6 Results & Reporting
-- Institution admins can view aggregated survey results
-- Instructors can view their own evaluation results (configurable by admin)
-- Results exportable to Excel/CSV (maatwebsite/excel)
-- Charts and summaries on the dashboard (Vue + charting library TBD)
+### 4.6 Built-in Reporting & Analytics
+
+The dashboard includes a full reporting system so institution admins and instructors can analyze survey results without ever needing to export a file. Exports (Section 5.6) are an addition to this, not a replacement.
+
+**Report views available:**
+- **Overview Report** — high-level summary for a survey: response rate, completion rate, average scores per section
+- **Question-level Report** — per-question breakdown with response distribution (e.g. 40% Strongly Agree, 30% Agree...)
+- **Instructor Report** — aggregated scores across all evaluations for a specific instructor, across multiple surveys or time periods
+- **Course Report** — classroom experience results grouped by course or section
+- **Trend Report** — how scores for an instructor or course evolve across semesters or time windows
+
+**Filtering & segmentation:**
+- Filter by survey, date range, course, instructor, department, or academic period
+- Compare two time periods side by side (e.g. Fall 2024 vs Spring 2025)
+- Filter by respondent group (if captured via LTI claims — e.g. student role vs faculty)
+
+**Visualizations (Vue + charting library — Apache ECharts or Chart.js):**
+- Bar charts for rating/Likert question distributions
+- Line charts for trend reports over time
+- Donut/pie charts for multiple choice breakdowns
+- Score cards (large number + trend indicator) for key metrics
+- Response rate progress bar per active survey
+
+**Access control:**
+- Institution admin sees all reports across all surveys and instructors
+- Instructor sees only their own evaluation reports (admin can toggle this off)
+- No respondent-level data is shown — all reports are aggregated to protect anonymity
+
+**Export from within reports:**
+- Any report view can be exported to Excel or PDF directly from the UI
+- Export includes the same filters currently applied on screen
+- Generated files are stored on S3 and served via signed URL (see Section 5.6)
 
 ---
 
@@ -132,6 +159,45 @@ survvy/
 ### 5.5 Authentication
 - Institution admins and internal users authenticate via Laravel Sanctum (session-based)
 - Survey respondents are authenticated exclusively through LTI 1.3 OIDC — no Survvy account required
+
+### 5.6 File Storage (Amazon S3)
+
+When a user exports survey results, Laravel generates an Excel or CSV file using `maatwebsite/excel`. That file needs to be stored somewhere. Storing it on the server's local disk is fragile — files can be lost on restart, and if the app ever runs on more than one server they won't share the same disk.
+
+Instead, generated files are uploaded to **Amazon S3** (already in the same AWS ecosystem as Lightsail). Laravel then returns a **pre-signed URL** — a temporary, expiring download link — so the user can download the file directly from S3 without it passing through the app server again.
+
+**How it works in practice:**
+1. Admin clicks "Export Results" on the dashboard
+2. Laravel dispatches a background job (Horizon queue)
+3. The job generates the file and uploads it to S3 under the tenant's folder: `exports/{tenant_id}/{filename}.xlsx`
+4. Laravel generates a signed URL valid for 15 minutes and returns it to the frontend
+5. The user's browser downloads directly from S3
+
+**Why a background job and not instant download?**
+Large surveys with hundreds of respondents can take several seconds to generate. A queue job keeps the UI responsive and lets the user continue working while the export is prepared.
+
+**Local development:**
+S3 is not needed locally. Laravel's filesystem abstraction allows swapping S3 for the local disk driver in `.env`. No code changes required — just a config difference between environments.
+
+```
+# .env (local)
+FILESYSTEM_DISK=local
+
+# .env (production)
+FILESYSTEM_DISK=s3
+AWS_BUCKET=survvy-exports
+AWS_DEFAULT_REGION=us-east-1
+```
+
+**S3 bucket structure:**
+```
+survvy-exports/
+└── exports/
+    └── {tenant_id}/
+        └── survey-results-{survey_id}-{date}.xlsx
+```
+
+Files older than 30 days are automatically deleted via an S3 lifecycle policy — no manual cleanup needed.
 
 ---
 

@@ -39,6 +39,12 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Dashboard
                                 </NavLink>
+                                <NavLink
+                                    :href="route('settings.lti')"
+                                    :active="route().current('settings.lti')"
+                                >
+                                    LTI Settings
+                                </NavLink>
                             </div>
                         </div>
 
@@ -145,6 +151,12 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('dashboard')"
                         >
                             Dashboard
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('settings.lti')"
+                            :active="route().current('settings.lti')"
+                        >
+                            LTI Settings
                         </ResponsiveNavLink>
                     </div>
 
